@@ -224,50 +224,6 @@ Available models:
 | `ANALYSIS_USE_AGENT` | true | Set `false` for deterministic-only analysis |
 | `ANALYSIS_MAX_TREE_DEPTH` | 4 | File tree depth for initial context |
 
-## Project Structure
-
-```
-autonomus-coding-agent-cluade/
-├── main.py                          # CLI entry point
-├── requirements.txt                 # Dependencies
-├── pricing.json                     # Model pricing data
-├── templates/                       # Project init templates
-│   ├── project-init-new.md
-│   ├── project-init-single-repo.md
-│   └── project-init-multi-repo.md
-└── src/
-    ├── config.py                    # All configuration
-    ├── models/                      # Pydantic data models
-    │   ├── feature.py               # Feature definitions
-    │   ├── project.py               # Project structure
-    │   ├── state.py                 # State tracking
-    │   ├── pull_request.py          # PR models
-    │   └── testing.py               # Test models
-    ├── services/                    # Business logic
-    │   ├── codebase_analyzer.py     # AI-powered codebase analysis
-    │   ├── spec_enhancer.py         # Claude spec enhancement
-    │   ├── feature_generator.py     # Feature breakdown
-    │   ├── cost_tracker.py          # Token usage & cost tracking
-    │   ├── state_manager.py         # State persistence
-    │   ├── git_manager.py           # Git operations
-    │   ├── branch_manager.py        # Branch management
-    │   ├── comprehensive_tester.py  # Test suite generation
-    │   ├── smart_pr_manager.py      # PR creation (opt-in)
-    │   ├── context_tracker.py       # Context window tracking
-    │   └── project_parser.py        # Project description parser
-    ├── agent/                       # Claude session management
-    │   ├── core.py                  # Session orchestration
-    │   ├── session.py               # Individual Claude sessions
-    │   ├── tools.py                 # Agent tool definitions
-    │   └── prompts.py               # Prompt templates
-    ├── pipeline/                    # Execution pipelines
-    │   ├── planning.py              # Plan & feature phases
-    │   ├── development.py           # Develop phase
-    │   └── commit.py                # Commit management
-    └── utils/
-        └── file_naming.py           # File naming utilities
-```
-
 ## Generated Files
 
 The agent creates these files in your project directory (not in the agent repo):
