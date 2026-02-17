@@ -2,18 +2,23 @@
 
 An autonomous coding agent powered by Claude (via AWS Bedrock) that reads project descriptions and implements features autonomously. It follows a three-phase workflow — **Plan, Feature, Develop** — with explicit developer approval at each step.
 
-Built on the architecture described in Anthropic's [Effective Harnesses for Long-Running Agents](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents). The core pattern — the **Ralph Wiggum loop** — runs each feature in a fresh Claude session with externalized state, avoiding context window exhaustion and keeping each task focused.
+### Foundation: The Ralph Wiggum Loop
 
-## Features
+This project implements the [Ralph Wiggum loop](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents) pattern from Anthropic's "Effective Harnesses for Long-Running Agents" article. The article describes a general-purpose pattern for long-running agentic work: break work into discrete tasks, run each in a **fresh agent session**, and persist state externally (to disk, not conversation memory). This avoids context window exhaustion and keeps each task focused.
 
-- **Three-Phase Workflow**: Plan → Feature → Develop with review points between each phase
-- **Intelligent Spec Enhancement**: Claude analyzes your requirements and fills in missing details (edge cases, error handling, security, API contracts, etc.)
-- **Feature-Based Sessions**: Each feature gets its own isolated Claude session to avoid context pollution
-- **AI-Powered Codebase Analysis**: For existing repos, an agent session explores your codebase to understand architecture, patterns, and conventions
-- **Cost Tracking**: Real-time token usage and cost tracking across all phases
+### What This Project Adds
+
+This repo builds a **complete autonomous coding workflow** on top of that loop:
+
+- **Three-Phase Pipeline**: Plan → Feature → Develop with developer approval gates between each phase
+- **AI Spec Enhancement**: Claude analyzes minimal requirements and fills in missing edge cases, API contracts, error handling, and security considerations
+- **AI Codebase Analysis**: For existing repos, a bounded Claude session explores your codebase to understand architecture, patterns, and conventions before writing code
+- **Automatic Feature Decomposition**: Claude breaks enhanced requirements into ordered, dependency-aware features
+- **Cost Tracking**: Real-time token usage and dollar cost tracking across all phases
 - **State Persistence**: Resume interrupted sessions seamlessly with `--resume`
 - **Comprehensive Testing** (opt-in): Integration, e2e, stress, and failure scenario tests
 - **Smart PR Creation** (opt-in): Groups features into logical, reviewable Pull Requests
+- **Multi-Repository Coordination**: Orchestrate changes across multiple repos with cross-repo dependency tracking
 
 ## Supported Project Types
 
@@ -117,14 +122,6 @@ python ~/path/to/agent/main.py develop ./feature_list.json
 │  → Output: Working code with tests                          │
 └─────────────────────────────────────────────────────────────┘
 ```
-
-### Why Feature-Based Sessions?
-
-Each feature gets its own Claude agent session because:
-
-1. **Testing cycles are context-heavy**: Implement → Test → Debug → Fix → Retest can consume 85-100% of context
-2. **Fresh context = better focus**: Each feature gets full attention without accumulated noise
-3. **Error isolation**: A failed feature doesn't pollute the next one
 
 ## Development Modes
 
