@@ -2,6 +2,8 @@
 
 An autonomous coding agent powered by Claude (via AWS Bedrock) that reads project descriptions and implements features autonomously. It follows a three-phase workflow — **Plan, Feature, Develop** — with explicit developer approval at each step.
 
+Built on the architecture described in Anthropic's [Effective Harnesses for Long-Running Agents](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents). The core pattern — the **Ralph Wiggum loop** — runs each feature in a fresh Claude session with externalized state, avoiding context window exhaustion and keeping each task focused.
+
 ## Features
 
 - **Three-Phase Workflow**: Plan → Feature → Develop with review points between each phase
