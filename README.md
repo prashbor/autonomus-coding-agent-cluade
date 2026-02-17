@@ -34,15 +34,16 @@ This repo builds a **complete autonomous coding workflow** on top of that loop:
 git clone https://github.com/prashbor/autonomus-coding-agent-cluade.git
 cd autonomus-coding-agent-cluade
 
-python -m venv .venv
+uv venv
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
-pip install -r requirements.txt
+uv pip install -r requirements.txt
 ```
 
 ### Requirements
 
 - Python 3.10+
+- [uv](https://docs.astral.sh/uv/) (recommended) or pip
 - AWS credentials with Bedrock access to Claude models
 - For PR creation (optional): GitHub CLI (`gh`) authenticated
 
