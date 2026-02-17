@@ -1,0 +1,30 @@
+{
+  "_source": "AWS Bedrock Pricing page (Cross-region Inference, us-east-1), fetched Feb 2025",
+  "_note": "Prices are per 1K tokens in USD. Multiply by 1000 to get per-1M-token price.",
+  "models": {
+    "us.anthropic.claude-opus-4-6-v1": {
+      "input_price_per_1k_tokens": 0.005,
+      "output_price_per_1k_tokens": 0.025
+    },
+    "us.anthropic.claude-opus-4-5-20251101-v1:0": {
+      "input_price_per_1k_tokens": 0.005,
+      "output_price_per_1k_tokens": 0.025
+    },
+    "us.anthropic.claude-sonnet-4-5-20250514-v1:0": {
+      "input_price_per_1k_tokens": 0.003,
+      "output_price_per_1k_tokens": 0.015
+    },
+    "us.anthropic.claude-sonnet-4-20250514-v1:0": {
+      "input_price_per_1k_tokens": 0.003,
+      "output_price_per_1k_tokens": 0.015
+    },
+    "us.anthropic.claude-haiku-4-5-20250514-v1:0": {
+      "input_price_per_1k_tokens": 0.001,
+      "output_price_per_1k_tokens": 0.005
+    }
+  },
+  "default": {
+    "input_price_per_1k_tokens": 0.003,
+    "output_price_per_1k_tokens": 0.015
+  }
+}

@@ -1,0 +1,7 @@
+# Autonomous Coding Agent Dependencies
+
+# Anthropic SDK for AWS Bedrock Claude access
+anthropic[bedrock]>=0.40.0
+
+# Data validation and serialization
+pydantic>=2.0.0
