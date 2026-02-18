@@ -202,7 +202,7 @@ Available models:
 |-------|----|----------|
 | Opus 4.6 | `us.anthropic.claude-opus-4-6-v1` | Default (most capable) |
 | Opus 4.5 | `us.anthropic.claude-opus-4-5-20251101-v1:0` | Alternative |
-| Sonnet 4.5 | `us.anthropic.claude-sonnet-4-5-20250514-v1:0` | Codebase analysis (default) |
+| Sonnet 4.5 | `us.anthropic.claude-sonnet-4-5-20250514-v1:0` | Faster alternative |
 | Sonnet 4 | `us.anthropic.claude-sonnet-4-20250514-v1:0` | Faster/cheaper |
 | Haiku 4.5 | `us.anthropic.claude-haiku-4-5-20250514-v1:0` | Budget option |
 
@@ -219,8 +219,7 @@ Available models:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ANALYSIS_MODEL_ID` | Sonnet 4.5 | Model for analysis sessions |
-| `ANALYSIS_MAX_TURNS` | 12 | Max turns per analysis session |
+| `ANALYSIS_MODEL_ID` | Opus 4.6 | Model for codebase analysis |
 | `ANALYSIS_USE_AGENT` | true | Set `false` for deterministic-only analysis |
 | `ANALYSIS_MAX_TREE_DEPTH` | 4 | File tree depth for initial context |
 
@@ -235,6 +234,7 @@ The agent creates these files in your project directory (not in the agent repo):
 | `.agent-state.json` | Develop phase | Progress tracking (enables resume) |
 | `comprehensive_test_report.json` | `--comprehensive-testing` | Test results |
 | `smart_pr_plan.json` | `--create-smart-prs` | PR organization plan |
+| `agent-files/` | Plan phase | Internal agent cache (codebase analysis). Safe to delete. |
 
 ## Troubleshooting
 

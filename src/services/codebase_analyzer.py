@@ -1,4 +1,4 @@
-"""Analyze existing codebases using AI agent with deterministic fallback."""
+"""Analyze existing codebases using a single AI call with deterministic fallback."""
 
 import json
 import os
@@ -6,10 +6,10 @@ import re
 from pathlib import Path
 from typing import Optional, TYPE_CHECKING
 
+import anthropic
+
 from ..models.feature import CodebaseAnalysis, TestingConfig
-from ..agent.session import AgentSession
-from ..agent.tools import READONLY_TOOL_DEFINITIONS, ReadOnlyToolExecutor
-from ..config import analysis_config
+from ..config import analysis_config, bedrock_config
 
 if TYPE_CHECKING:
     from ..services.cost_tracker import CostTracker
@@ -18,11 +18,12 @@ if TYPE_CHECKING:
 class CodebaseAnalyzer:
     """Analyzes existing codebases to extract structure and patterns.
 
-    Two-phase approach:
-    1. Deterministic: Fast file tree collection (no API call)
-    2. Agent: Claude explores codebase with read-only tools (bounded turns)
+    Three-phase approach (single API call):
+    1. Deterministic: Fast file tree + structure analysis (no API call)
+    2. Read key files: Deterministic selection + reading of important files
+    3. Single AI call: Send everything to Claude, get back structured analysis
 
-    Falls back to deterministic-only if agent fails.
+    Falls back to deterministic-only if AI call fails.
     """
 
     # Common patterns for different languages
@@ -90,129 +91,204 @@ class CodebaseAnalyzer:
     # -------------------------------------------------------------------------
 
     async def analyze(self) -> CodebaseAnalysis:
-        """Perform full analysis: deterministic + agent with fallback.
+        """Perform full analysis: deterministic + single AI call.
 
-        Returns CodebaseAnalysis with enriched fields if agent succeeds,
-        or basic deterministic analysis if agent fails.
+        Strategy:
+        1. Run deterministic analysis (fast, no API)
+        2. Read key files from disk deterministically
+        3. Send everything to Claude in ONE API call (no agent loop)
+        4. Parse structured JSON response
+
+        Returns CodebaseAnalysis with enriched fields if AI call succeeds,
+        or basic deterministic analysis if it fails.
         """
-        # Phase 1: Deterministic file tree (fast, no API)
-        file_tree = self._collect_file_tree()
+        # Phase 1: Deterministic analysis + deep file tree (fast, no API)
         deterministic_result = self._deterministic_analysis()
+        file_tree = self._collect_file_tree(max_depth=6)
+        key_files = self.get_key_files(max_files=15)
 
-        # Phase 2: Agent-based deep analysis
+        # Phase 2: Read key files from disk (fast, no API)
+        file_contents = self._read_key_files(key_files)
+        print(f"   Read {len(file_contents)} key files for AI analysis")
+
+        # Phase 3: Single API call with everything
         try:
-            agent_result = await self._agent_analysis(file_tree)
-            return self._merge_results(deterministic_result, agent_result)
+            ai_result = self._single_call_analysis(
+                file_tree, deterministic_result, file_contents
+            )
+            return self._merge_results(deterministic_result, ai_result)
         except Exception as e:
-            print(f"   Warning: Agent analysis failed ({e}), using deterministic fallback")
+            print(f"   Warning: AI analysis failed ({e}), using deterministic fallback")
             deterministic_result.analysis_method = "deterministic"
             return deterministic_result
 
     def analyze_sync(self) -> CodebaseAnalysis:
         """Synchronous fallback - deterministic only.
 
-        For use when agent analysis is disabled or caller cannot await.
+        For use when AI analysis is disabled or not needed.
         """
         result = self._deterministic_analysis()
         result.analysis_method = "deterministic"
         return result
 
     # -------------------------------------------------------------------------
-    # Agent-based analysis
+    # Single-call AI analysis (replaces multi-turn agent loop)
     # -------------------------------------------------------------------------
 
-    async def _agent_analysis(self, file_tree: str) -> CodebaseAnalysis:
-        """Run AI agent analysis session with read-only tools.
+    def _read_key_files(
+        self, key_files: list[str], max_lines_per_file: int = 500
+    ) -> dict[str, str]:
+        """Read key files from disk with size caps.
 
-        Creates a bounded AgentSession that explores the codebase,
-        then parses the structured JSON output.
+        Args:
+            key_files: Relative file paths from get_key_files()
+            max_lines_per_file: Truncate files longer than this
+
+        Returns:
+            Dict of {relative_path: file_content}
+        """
+        contents: dict[str, str] = {}
+
+        for rel_path in key_files:
+            full_path = self.repo_path / rel_path
+            try:
+                text = full_path.read_text(errors="replace")
+                lines = text.splitlines()
+                if len(lines) > max_lines_per_file:
+                    half = max_lines_per_file // 2
+                    truncated = (
+                        lines[:half]
+                        + [f"\n... ({len(lines) - max_lines_per_file} lines truncated) ...\n"]
+                        + lines[-half:]
+                    )
+                    text = "\n".join(truncated)
+                contents[rel_path] = text
+            except (OSError, UnicodeDecodeError):
+                continue
+
+        return contents
+
+    def _single_call_analysis(
+        self,
+        file_tree: str,
+        deterministic: CodebaseAnalysis,
+        file_contents: dict[str, str],
+    ) -> CodebaseAnalysis:
+        """Analyze codebase with a single API call — no agent loop.
+
+        Sends the file tree, deterministic results, and actual file contents
+        to Claude in one prompt. Claude returns structured JSON analysis.
         """
         system_prompt = self._build_analysis_system_prompt()
-        user_prompt = self._build_analysis_user_prompt(file_tree)
-
-        session = AgentSession(
-            working_directory=str(self.repo_path),
-            system_prompt=system_prompt,
-            max_turns=analysis_config.max_turns,
-            model_id=analysis_config.model_id,
-            tool_definitions=READONLY_TOOL_DEFINITIONS,
-            tool_executor=ReadOnlyToolExecutor(str(self.repo_path)),
-            cost_tracker=self._cost_tracker,
-            cost_phase="plan",
-            cost_label_prefix="codebase_analysis",
+        user_prompt = self._build_analysis_user_prompt(
+            file_tree, deterministic, file_contents
         )
 
-        result = await session.send_message(user_prompt)
+        client = anthropic.AnthropicBedrock(aws_region=bedrock_config.region)
 
-        if not result.success:
-            raise RuntimeError(f"Agent session failed: {result.error}")
+        response = client.messages.create(
+            model=analysis_config.model_id,
+            max_tokens=8192,
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_prompt}],
+        )
 
-        return self._parse_agent_response(result.content)
+        # Track cost
+        input_tokens = response.usage.input_tokens
+        output_tokens = response.usage.output_tokens
+        if self._cost_tracker:
+            entry = self._cost_tracker.record(
+                model_id=analysis_config.model_id,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                phase="plan",
+                label="codebase_analysis",
+            )
+            print(f"      Tokens: {input_tokens:,} in / {output_tokens:,} out")
+            print(f"      Cost: {self._cost_tracker.format_cost(entry.total_cost)}")
+        else:
+            print(f"      Tokens: {input_tokens:,} in / {output_tokens:,} out")
+
+        # Extract text from response
+        text = "".join(
+            block.text for block in response.content if block.type == "text"
+        )
+
+        return self._parse_agent_response(text)
 
     def _build_analysis_system_prompt(self) -> str:
-        """System prompt for the codebase analysis agent."""
-        return """You are an expert software architect analyzing an existing codebase. Your goal is to understand the architecture, patterns, conventions, and structure of this project.
+        """System prompt for the codebase analysis."""
+        return """You are an expert software architect analyzing an existing codebase. You will receive:
+1. A complete file tree
+2. A preliminary automated analysis
+3. The actual contents of key files
 
-## Your Tools
-You have two read-only tools:
-- **read_file**: Read the contents of any file
-- **list_directory**: List contents of any directory
-
-## Your Approach
-1. Start by examining the file tree provided in the user message
-2. Read key configuration files (package.json, pyproject.toml, pom.xml, requirements.txt, etc.)
-3. Read entry points and main application files
-4. Read a few representative source files to understand patterns
-5. Look at test files to understand testing approach
-6. Examine any architecture-related files (README, docs)
-
-## Budget
-You have a LIMITED number of tool calls. Be strategic:
-- Prioritize configuration files and entry points first
-- Read 2-3 representative source files, not every file
-- Focus on understanding patterns, not memorizing code
+Your job is to produce a comprehensive analysis of the codebase's architecture, patterns, conventions, and structure.
 
 ## Output Format
-After exploration, you MUST output your analysis as a JSON block wrapped in ```json ... ``` markers. The JSON must conform to this exact schema:
+You MUST output your analysis as a JSON block wrapped in ```json ... ``` markers. The JSON must conform to this exact schema:
 
 ```json
 {
-  "structure": {"directory_or_file": "description", ...},
+  "structure": {"directory_or_file": "description of purpose", ...},
   "patterns": {"pattern_name": "pattern_value", ...},
-  "testing": {"framework": "pytest/jest/junit/etc", "command": "test command"} or null,
+  "testing": {"framework": "pytest/jest/junit/scalatest/etc", "command": "test command"} or null,
   "architecture_patterns": ["pattern description 1", "pattern description 2"],
   "coding_conventions": {"convention_name": "description with actual examples from code"},
   "key_abstractions": [
-    {"name": "ClassName", "type": "class", "purpose": "what it does", "file": "path/to/file.py"}
+    {"name": "ClassName", "type": "class/trait/interface", "purpose": "what it does", "file": "path/to/file"}
   ],
   "module_relationships": [
-    {"from": "module_a", "to": "module_b", "relationship": "imports"}
+    {"from": "module_a", "to": "module_b", "relationship": "imports/extends/depends_on"}
   ],
   "api_patterns": {"style": "REST/GraphQL/RPC", "auth": "description", ...} or null,
-  "entry_points": ["main.py", "src/index.ts"]
+  "entry_points": ["path/to/main/file"]
 }
 ```
 
-Be specific and concrete. Reference actual file names, class names, and code patterns you observed. Set any field to null or empty if not applicable."""
+Be specific and concrete. Reference actual file names, class names, and code patterns you observed in the provided file contents. Set any field to null or empty if not applicable.
 
-    def _build_analysis_user_prompt(self, file_tree: str) -> str:
-        """User prompt with the file tree for initial orientation."""
-        return f"""Analyze the codebase at this location. Here is the file tree to orient you:
+Output ONLY the JSON block. No additional commentary."""
 
+    def _build_analysis_user_prompt(
+        self,
+        file_tree: str,
+        deterministic: CodebaseAnalysis,
+        file_contents: dict[str, str],
+    ) -> str:
+        """User prompt with file tree, deterministic results, and file contents."""
+        # Format deterministic results as context
+        det_context = "## Preliminary Analysis (automated scan)\n\n"
+        if deterministic.patterns:
+            det_context += "**Detected patterns:**\n"
+            for k, v in deterministic.patterns.items():
+                det_context += f"- {k}: {v}\n"
+            det_context += "\n"
+        if deterministic.testing:
+            det_context += f"**Testing:** {deterministic.testing.framework} (`{deterministic.testing.command}`)\n\n"
+        if deterministic.structure:
+            det_context += "**Top-level structure:**\n"
+            for k, v in deterministic.structure.items():
+                det_context += f"- `{k}`: {v}\n"
+            det_context += "\n"
+
+        # Format file contents
+        files_section = "## Key File Contents\n\n"
+        for rel_path, content in file_contents.items():
+            files_section += f"### `{rel_path}`\n```\n{content}\n```\n\n"
+
+        return f"""Analyze this codebase based on the file tree, preliminary scan, and key file contents below.
+
+## Complete File Tree
 ```
 {file_tree}
 ```
 
-Explore the codebase using read_file and list_directory tools. Focus on understanding:
-1. Overall architecture and design patterns
-2. Coding conventions (naming, error handling, imports, etc.)
-3. Key abstractions (important classes, interfaces, base classes)
-4. How modules relate to each other
-5. API patterns (if any)
-6. Testing setup and approach
-7. Entry points
+{det_context}
 
-After exploration, output your complete analysis as a JSON block. Be thorough but efficient with your tool calls."""
+{files_section}
+
+Produce your comprehensive analysis as a ```json``` block now."""
 
     def _parse_agent_response(self, response: str) -> CodebaseAnalysis:
         """Extract structured CodebaseAnalysis from agent's final text response.
@@ -602,28 +678,95 @@ After exploration, output your complete analysis as a JSON block. Be thorough bu
 
         return None
 
-    def get_key_files(self, max_files: int = 10) -> list[str]:
-        """Get list of key files to understand the codebase."""
-        key_files = []
+    def get_key_files(self, max_files: int = 15) -> list[str]:
+        """Get list of key files to understand the codebase.
 
-        # Priority files
-        priority_patterns = [
-            "main.py",
-            "app.py",
-            "index.ts",
-            "index.js",
-            "Application.java",
-            "pom.xml",
-            "package.json",
-            "requirements.txt",
-            "README.md",
+        Prioritizes build configs, entry points, and representative source files.
+        """
+        key_files: list[str] = []
+        seen: set[str] = set()
+
+        def _add(path: Path) -> None:
+            rel = str(path.relative_to(self.repo_path))
+            if rel not in seen:
+                seen.add(rel)
+                key_files.append(rel)
+
+        # 1. Build/config files (highest priority — reveal project structure)
+        config_patterns = [
+            "pom.xml", "build.sbt", "build.gradle", "build.gradle.kts",
+            "package.json", "requirements.txt", "pyproject.toml", "setup.py",
+            "Cargo.toml", "go.mod", "Makefile", "Dockerfile",
         ]
+        for pattern in config_patterns:
+            # Root-level first
+            root_match = self.repo_path / pattern
+            if root_match.exists():
+                _add(root_match)
+            # Then submodule configs (for multi-module projects)
+            for match in sorted(self.repo_path.rglob(pattern)):
+                if len(key_files) >= max_files:
+                    break
+                # Skip deeply nested ones (e.g., inside test fixtures)
+                rel = str(match.relative_to(self.repo_path))
+                depth = rel.count(os.sep)
+                if depth <= 2:
+                    _add(match)
 
-        for pattern in priority_patterns:
+        # 2. Entry points and main files
+        entry_patterns = [
+            "main.py", "app.py", "__main__.py",
+            "index.ts", "index.js", "app.ts", "app.js",
+            "Application.java", "Main.java", "Main.scala",
+        ]
+        for pattern in entry_patterns:
+            for match in list(self.repo_path.rglob(pattern))[:4]:
+                # Skip matches inside ignored/hidden directories
+                rel = str(match.relative_to(self.repo_path))
+                if any(part in self.IGNORE_DIRS or part.startswith(".")
+                       for part in Path(rel).parts[:-1]):
+                    continue
+                if len(key_files) >= max_files:
+                    break
+                _add(match)
+
+        # 3. README
+        for readme in ["README.md", "readme.md", "README.rst"]:
+            match = self.repo_path / readme
+            if match.exists():
+                _add(match)
+                break
+
+        # 4. Representative source files (largest non-test files likely have key logic)
+        source_extensions = {".py", ".java", ".scala", ".ts", ".js", ".go", ".rs"}
+        source_files: list[tuple[int, Path]] = []
+        for root, dirs, files in os.walk(self.repo_path):
+            dirs[:] = [
+                d for d in dirs
+                if d not in self.IGNORE_DIRS and not d.startswith(".")
+            ]
+            for f in files:
+                p = Path(root) / f
+                if p.suffix in source_extensions and "test" not in p.name.lower():
+                    try:
+                        size = p.stat().st_size
+                        source_files.append((size, p))
+                    except OSError:
+                        pass
+
+        # Pick top source files by size (larger files tend to have core logic)
+        source_files.sort(reverse=True)
+        for _, p in source_files[:5]:
+            if len(key_files) >= max_files:
+                break
+            _add(p)
+
+        # 5. A test file to understand testing patterns
+        test_patterns = ["test_*.py", "*Test.java", "*Test.scala", "*.test.ts", "*.spec.ts"]
+        for pattern in test_patterns:
             matches = list(self.repo_path.rglob(pattern))
-            for match in matches[:2]:  # Max 2 per pattern
-                rel_path = str(match.relative_to(self.repo_path))
-                if rel_path not in key_files:
-                    key_files.append(rel_path)
+            if matches:
+                _add(matches[0])
+                break
 
         return key_files[:max_files]

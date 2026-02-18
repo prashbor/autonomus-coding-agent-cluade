@@ -218,12 +218,13 @@ Generate a complete project-init-final.md document in the following markdown for
 ## CRITICAL INSTRUCTIONS
 
 1. **Respect explicit specifications**: Don't change what the developer explicitly specified
-2. **Add implicit requirements**: Fill in details the developer likely assumed
-3. **Be practical**: Only add requirements relevant to this specific project
-4. **Be specific**: Each requirement should be implementable and testable
-5. **Use consistent IDs**: FR-X for functional, SR-X for system requirements
-6. **Prioritize completeness**: The feature generator will use this document, so nothing should be left to assumption
-7. **Don't over-engineer**: Add only what's necessary for a production-ready implementation
+2. **Trust codebase analysis over developer input on factual matters**: If the codebase analysis contradicts the developer's input regarding build tools, languages, test frameworks, directory structure, or file paths, trust the codebase analysis (it was generated from the actual repository). Flag any discrepancies you find in the output.
+3. **Add implicit requirements**: Fill in details the developer likely assumed
+4. **Be practical**: Only add requirements relevant to this specific project
+5. **Be specific**: Each requirement should be implementable and testable
+6. **Use consistent IDs**: FR-X for functional, SR-X for system requirements
+7. **Prioritize completeness**: The feature generator will use this document, so nothing should be left to assumption
+8. **Don't over-engineer**: Add only what's necessary for a production-ready implementation
 
 Generate the complete enhanced project-init-final.md document now. Output ONLY the markdown content, no additional commentary."""
 

@@ -363,7 +363,9 @@ class PlanningPipeline:
         }
 
         analysis_filename = generate_analysis_filename(str(self.project_init_path))
-        save_path = self.project_init_path.parent / analysis_filename
+        agent_files_dir = self.project_init_path.parent / "agent-files"
+        agent_files_dir.mkdir(exist_ok=True)
+        save_path = agent_files_dir / analysis_filename
 
         save_path.write_text(json.dumps(cache_data, indent=2, default=str))
         print(f"   Saved codebase analysis cache: {save_path}")
@@ -389,13 +391,15 @@ class PlanningPipeline:
         # Strip "-refined" suffix to find the cache file.
         stripped_base = re.sub(r"-refined$", "", base_name)
 
+        agent_files_dir = self.project_init_path.parent / "agent-files"
+
         candidates = []
         if stripped_base != base_name:
             candidates.append(
-                self.project_init_path.parent / f"{stripped_base}-codebase-analysis.json"
+                agent_files_dir / f"{stripped_base}-codebase-analysis.json"
             )
         candidates.append(
-            self.project_init_path.parent / f"{base_name}-codebase-analysis.json"
+            agent_files_dir / f"{base_name}-codebase-analysis.json"
         )
 
         cache_path = None
@@ -478,9 +482,10 @@ class PlanningPipeline:
         base_name = extract_base_name(str(self.project_init_path))
         stripped_base = re.sub(r"-refined$", "", base_name)
 
+        agent_files_dir = self.project_init_path.parent / "agent-files"
         candidates = [
-            self.project_init_path.parent / f"{base_name}-codebase-analysis.json",
-            self.project_init_path.parent / f"{stripped_base}-codebase-analysis.json",
+            agent_files_dir / f"{base_name}-codebase-analysis.json",
+            agent_files_dir / f"{stripped_base}-codebase-analysis.json",
         ]
         return any(c.exists() for c in candidates)
 

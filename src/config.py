@@ -65,14 +65,14 @@ class AgentConfig:
 class AnalysisConfig:
     """Configuration for AI-agent-based codebase analysis."""
 
-    # Model for analysis (Sonnet 4.5 — same cost as Sonnet 4, more capable)
+    # Model for analysis (Opus 4.6 — most capable for deep codebase understanding)
     model_id: str = os.getenv(
         "ANALYSIS_MODEL_ID",
-        BedrockModels.SONNET_4_5,
+        BedrockModels.OPUS_4_6,
     )
 
-    # Maximum tool-use turns per analysis session (10-15 recommended)
-    max_turns: int = int(os.getenv("ANALYSIS_MAX_TURNS", "12"))
+    # Maximum tool-use turns per analysis session
+    max_turns: int = int(os.getenv("ANALYSIS_MAX_TURNS", "25"))
 
     # Whether to use agent-based analysis (set to "false" to force deterministic)
     use_agent: bool = os.getenv("ANALYSIS_USE_AGENT", "true").lower() == "true"

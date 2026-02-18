@@ -144,6 +144,7 @@ Generate a JSON feature list with the following structure:
 4. **Each feature needs tests** - Define clear test criteria
 5. **Respect existing patterns** - If working on existing repo, follow its conventions
 6. **For multi-repo projects** - Use repo_tasks to specify work per repository
+7. **File paths must match actual codebase structure** - If codebase analysis is provided, use the actual directory structure and file paths from the analysis. Do NOT guess or invent file paths. The "files" field in repo_tasks must reference paths that actually exist or follow the exact naming conventions found in the analysis.
 
 ## Feature Guidelines:
 

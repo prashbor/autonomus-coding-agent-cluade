@@ -176,9 +176,14 @@ class ProjectParser:
         repo_section = self.sections.get("repositories", "")
 
         if not repo_section:
-            # Try to find numbered repository sections
+            # Try to find numbered repository sections in various formats:
+            #   "1. Some Repository"       -> r"\d+\.\s+.+repository"
+            #   "Repository 1: name (...)"  -> r"repository\s+\d+"
             for key, content in self.sections.items():
-                if re.match(r"\d+\.\s+.+repository", key, re.IGNORECASE):
+                if (
+                    re.match(r"\d+\.\s+.+repository", key, re.IGNORECASE)
+                    or re.match(r"repository\s+\d+", key, re.IGNORECASE)
+                ):
                     repo = self._parse_single_repo_section(key, content)
                     if repo:
                         repos.append(repo)
